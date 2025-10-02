@@ -23,6 +23,8 @@ const pool = mysql.createPool({
     database: process.env.DB_NAME || 'zorr_db'
 });
 
+console.log('Connected to MySQL Database');
+
 app.use(express.json());
 app.use(express.static(join(__dirname, 'dist')));
 
@@ -43,36 +45,66 @@ app.post('/create-order', async (req, res) => {
 });
 
 // Save Order after Success
+// app.post('/save-order', async (req, res) => {
+//     const { total, payment_method, items } = req.body;
+//     let connection;
+//     try {
+//         connection = await pool.getConnection();
+//         await connection.beginTransaction();
+
+//         const [orderResult] = await connection.query(
+//             'INSERT INTO orders (total, payment_method) VALUES (?, ?)',
+//             [total, payment_method]
+//         );
+//         const orderId = orderResult.insertId;
+
+//         for (const item of items) {
+//             await connection.query(
+//                 'INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)',
+//                 [orderId, item.product_id, item.quantity, item.price]
+//             );
+//         }
+
+//         await connection.commit();
+//         connection.release();
+//         res.json({ success: true, orderId });
+//     } catch (error) {
+//         if (connection) await connection.rollback();
+//         connection?.release();
+//         console.error('Save order error:', error);
+//         res.status(500).json({ error: error.message });
+//     }
+// });
+
 app.post('/save-order', async (req, res) => {
     const { total, payment_method, items } = req.body;
-    let connection;
-    try {
-        connection = await pool.getConnection();
-        await connection.beginTransaction();
 
-        const [orderResult] = await connection.query(
+    try {
+        // Start a transaction
+        await pool.query('START TRANSACTION');
+
+        const [orderResult] = await pool.query(
             'INSERT INTO orders (total, payment_method) VALUES (?, ?)',
             [total, payment_method]
         );
         const orderId = orderResult.insertId;
 
         for (const item of items) {
-            await connection.query(
+            await pool.query(
                 'INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)',
                 [orderId, item.product_id, item.quantity, item.price]
             );
         }
 
-        await connection.commit();
-        connection.release();
+        await pool.query('COMMIT');
         res.json({ success: true, orderId });
     } catch (error) {
-        if (connection) await connection.rollback();
-        connection?.release();
+        await pool.query('ROLLBACK');
         console.error('Save order error:', error);
         res.status(500).json({ error: error.message });
     }
 });
+
 
 // Fetch Orders
 app.get('/orders', async (req, res) => {
